@@ -21,7 +21,8 @@ bool lastInput2 = false;
 bool estopActive = false;
 
 unsigned long loop_start_time = 0;
-const unsigned long loop_timeout = 120000;      //Two Minutes
+const unsigned long loop_timeout = 90000;       //90 seconds
+bool timed_out = false;                         //Variable to see if the auto cycle has timed out
 
 int32_t uncoverPulses;
 int32_t coverPulses;
@@ -104,7 +105,8 @@ void loop() {
 // ***ALWAYS START WHEN THE POOL IS COVERED!!!!!***
 //||||||||||||||||||||||||||||||||||||||||||||||||||\\
  
-  if (auto_button.State() == HIGH) {
+  if (auto_button.State() == HIGH && timed_out == false) {
+    
       //Serial.println("Auto on");                              //DEBUG
       motor_driver.EnableRequest(true);                         // Enable All Motors and Clear Alerts
       motor_cover_tube.EnableRequest(true);
@@ -128,7 +130,7 @@ void loop() {
       //Serial.println("Uncovering the Pool");                  //DEBUG
       loop_start_time = millis();
    
-      while (cover_rotary_switch_1.State() == HIGH) {
+      while (cover_rotary_switch_1.State() == HIGH && timed_out == false) {
        
         if (auto_button.State() == LOW){
           Serial.println("E-STOP");
@@ -147,6 +149,7 @@ void loop() {
           CommandVelocity(0, motor_cover_tube);
           motor_driver.EnableRequest(false);
           motor_cover_tube.EnableRequest(false);
+          timed_out = true;
           break;
         }
        
@@ -187,7 +190,7 @@ void loop() {
       //Serial.println("Covering the Pool");                    //DEBUG
       loop_start_time = millis();
    
-      while (cover_rotary_switch_2.State() == HIGH) {
+      while (cover_rotary_switch_2.State() == HIGH && && timed_out == false) {
        
         if (auto_button.State() == LOW){
           Serial.println("E-STOP");
@@ -206,6 +209,7 @@ void loop() {
           CommandVelocity(0, motor_cover_tube);
           motor_driver.EnableRequest(false);
           motor_cover_tube.EnableRequest(false);
+          timed_out = true;
           break;
         }
        
