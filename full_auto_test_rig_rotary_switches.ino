@@ -17,6 +17,7 @@ int16_t state;
 #define motor_driver ConnectorM0
 #define motor_rope_tube ConnectorM3
 #define motor_cover_tube ConnectorM2
+#define SerialPort ConnectorCOM0
 #define baudRate 9600
 #define INPUT_A_FILTER 20 //Check this
  
@@ -25,20 +26,21 @@ bool lastInput2 = false;
 bool estopActive = false;
  
 unsigned long loop_start_time = 0;
-const unsigned long loop_timeout = 120000;      //Two Minutes
+const unsigned long loop_timeout = 60000;      // 60 Secoonds (CHANGE IF COVER DISTANCE IS CHANGED)
+bool timed_out = false;
  
 int32_t uncoverPulses;
 int32_t coverPulses;
-double movement_length = 40; //ft
+
 const double diam_cover = 6.923/12;
-double ang_velocity_uncover = 20*32;
-double ang_velocity_cover = 25*32;
+double ang_velocity_cover = 30*32;
+double ang_velocity_rope = 30*32;
+double ang_velocity_driver = 22*32;
  
 // Define the velocity and acceleration limits to be used for each move for the driving motor
 int velocityLimitRPM = 10;
 int velocityLimit = velocityLimitRPM * 128000 / 60; // pulses per sec
 int accelerationLimit = 6000; // pulses per sec^2
- 
 int velocityMCRPM = 9;
 int velocityMC = velocityMCRPM * 32;
  
@@ -51,16 +53,24 @@ double maxSpeedMC = 4000;
 double inputVelocity = 100;
  
 // Creates the Cycle count
- 
-int cycles = 0;
+float cycles = 0;
  
 // Declares our user-defined helper functions on the bottom.
 bool MoveDistance(int distance, MotorDriver& motor);
 bool CommandVelocity(long commandedVelocity);
+void ClearScreen();
  
 bool driver_stopped = true;
  
 void setup() {
+
+  SerialPort.Mode(Connector::TTL);
+  SerialPort.Speed(baudRate);
+  SerialPort.PortOpen();
+  ClearScreen();
+  SerialPort.Send("       WELCOME       USE TEST RIG WISELY                            (ASA)");
+  delay(4000);
+ 
   MotorMgr.MotorInputClocking(MotorManager::CLOCK_RATE_NORMAL);
   MotorMgr.MotorModeSet(MotorManager::MOTOR_M0M1,
                           Connector::CPM_MODE_STEP_AND_DIR);
@@ -69,6 +79,7 @@ void setup() {
  
   // Set the motor's HLFB mode to bipolar PWM
   motor_driver.HlfbMode(MotorDriver::HLFB_MODE_HAS_BIPOLAR_PWM);
+ 
   // Set the HFLB carrier frequency to 482 Hz
   motor_driver.HlfbCarrier(MotorDriver::HLFB_CARRIER_482_HZ);
  
@@ -102,7 +113,9 @@ void setup() {
   cover_rotary_switch_2.Mode(Connector::INPUT_DIGITAL);
  
   red_light.State(true);
- 
+
+  ClearScreen();
+  SerialPort.Send("  READY FOR COMMAND!");
   Serial.println("MAKE SURE THE POOL IS COVERED!!!!!");
  
 }
@@ -123,10 +136,13 @@ void loop() {
 // ***ALWAYS START WHEN THE POOL IS COVERED!!!!!***
 //||||||||||||||||||||||||||||||||||||||||||||||||||\\
  
-  if (auto_button.State() == HIGH) {
+  if (auto_button.State() == HIGH && timed_out == false) {
  
       //Serial.println("Auto on");                              //DEBUG
-     
+      ClearScreen();
+      SerialPort.Send("    AUTO CYCLE ON      NUMBER OF CYCLES:                             ");
+      SerialPort.Send(cycles, 1);
+   
       motor_driver.EnableRequest(true);                         // Enable All Motors and Clear Alerts
       motor_cover_tube.EnableRequest(true);
       motor_rope_tube.EnableRequest(true);
@@ -141,7 +157,7 @@ void loop() {
  
       green_light.State(true);
  
-      velocityLimit = ang_velocity_cover * 128000 / 60 / 32;    // Set Speed of Driver Motor
+      velocityLimit = ang_velocity_driver * 128000 / 60 / 32;    // Set Speed of Driver Motor
       motor_driver.VelMax(velocityLimit);
       motor_driver.PositionRefSet(0);
       MoveDistance(10000000, motor_driver);                     // Start Driver Motor
@@ -149,16 +165,20 @@ void loop() {
       delay(6000);
  
       CommandVelocity(0, motor_cover_tube);                     // Start Cover and Rope Tube Motors
-      CommandVelocity(ang_velocity_uncover, motor_rope_tube);
+      CommandVelocity(ang_velocity_rope, motor_rope_tube);
  
       //Serial.println("Uncovering the Pool");                  //DEBUG
  
       loop_start_time = millis();
  
-      while (cover_rotary_switch_1.State() == HIGH || rope_rotary_switch_1.State() == HIGH) {
+      while (cover_rotary_switch_1.State() == HIGH || rope_rotary_switch_1.State() == HIGH && timed_out == false) {
  
         if (auto_button.State() == LOW){
           Serial.println("E-STOP");
+          ClearScreen();
+          SerialPort.Send("  AUTO CYCLE STOPPED ");
+          SerialPort.Send("   # OF CYCLES:");
+          SerialPort.Send(cycles, 1);
           motor_driver.MoveStopDecel(10000);
           motor_cover_tube.MoveStopDecel(10000);
           CommandVelocity(0, motor_cover_tube);
@@ -171,6 +191,13 @@ void loop() {
  
         if (millis() - loop_start_time >= loop_timeout){
           Serial.println("TIMEOUT");
+          ClearScreen();
+          SerialPort.Send("   CYCLE TIMED OUT!  ");
+          SerialPort.Send("RESET CONTROL PANEL");
+          SerialPort.Send(" PLEASE FIND PROBLEM!");
+          SerialPort.Send("   # OF CYCLES:");
+          SerialPort.Send(cycles, 1);
+          red_light.State(false);
           motor_driver.MoveStopDecel(10000);
           motor_cover_tube.MoveStopDecel(10000);
           CommandVelocity(0, motor_cover_tube);
@@ -178,6 +205,7 @@ void loop() {
           motor_driver.EnableRequest(false);
           motor_cover_tube.EnableRequest(false);
           motor_rope_tube.EnableRequest(false);
+          timed_out = true;
           break;
         }
    
@@ -185,6 +213,12 @@ void loop() {
           motor_driver.MoveStopDecel(10000);
           motor_driver.EnableRequest(false);
           motor_cover_tube.EnableRequest(false);
+          cycles += .5;
+          Serial.print("Number of Cycles Completed: ");
+          Serial.println(cycles, 1);
+          ClearScreen();
+          SerialPort.Send("    AUTO CYCLE ON      NUMBER OF CYCLES:                             ");
+          SerialPort.Send(cycles, 1);
         }
  
         if (rope_rotary_switch_1.State() == LOW){
@@ -207,7 +241,7 @@ void loop() {
       motor_cover_tube.EnableRequest(false);
       motor_rope_tube.EnableRequest(false);
  
-      delay(60000);                                             // MOTOR COOLDOWN
+      delay(30000);                                             // MOTOR COOLDOWN
  
       //
       // ---------- COVER ----------
@@ -234,10 +268,14 @@ void loop() {
  
       loop_start_time = millis();
  
-      while (cover_rotary_switch_2.State() == HIGH || rope_rotary_switch_2.State() == HIGH) {
+      while (cover_rotary_switch_2.State() == HIGH || rope_rotary_switch_2.State() == HIGH && timed_out == false) {
  
         if (auto_button.State() == LOW){
           Serial.println("E-STOP");
+          ClearScreen();
+          SerialPort.Send("  AUTO CYCLE STOPPED ");
+          SerialPort.Send("   # OF CYCLES:");
+          SerialPort.Send(cycles, 1);
           motor_driver.MoveStopDecel(10000);
           motor_cover_tube.MoveStopDecel(10000);
           CommandVelocity(0, motor_cover_tube);
@@ -250,6 +288,13 @@ void loop() {
  
         if (millis() - loop_start_time >= loop_timeout){
           Serial.println("TIMEOUT");
+          ClearScreen();
+          SerialPort.Send("   CYCLE TIMED OUT!  ");
+          SerialPort.Send("RESET CONTROL PANEL");
+          SerialPort.Send(" PLEASE FIND PROBLEM!");
+          SerialPort.Send("   # OF CYCLES:");
+          SerialPort.Send(cycles, 1);
+          red_light.State(false);
           motor_driver.MoveStopDecel(10000);
           motor_cover_tube.MoveStopDecel(10000);
           CommandVelocity(0, motor_cover_tube);
@@ -268,8 +313,16 @@ void loop() {
  
         if (rope_rotary_switch_2.State() == LOW){
           motor_rope_tube.MoveStopDecel(10000);
+          motor_driver.MoveStopDecel(10000);
           CommandVelocity(0, motor_rope_tube);
+          motor_driver.EnableRequest(false);
           motor_rope_tube.EnableRequest(false);
+          cycles += .5;
+          Serial.print("Number of Cycles Completed: ");
+          Serial.println(cycles, 1);
+          ClearScreen();
+          SerialPort.Send("    AUTO CYCLE ON      NUMBER OF CYCLES:                             ");
+          SerialPort.Send(cycles, 1);
         }
      
       }
@@ -287,18 +340,7 @@ void loop() {
  
       green_light.State(false);
  
-      cycles += 1;
-      Serial.print("Number of Cycles Completed: ");
-      Serial.println(cycles);
- 
-      //Long Motor Cooldown
-      if (cycles == 33 || cycles == 67 || cycles == 100 || cycles == 133 || cycles == 167 || cycles == 200){
- 
-        //Serial.println("Finished 33 cycles; Resting for 10 minutes");       //DEBUG
-        delay(600000);
-      }
-     
-      delay(60000);                       // MOTOR COOLDOWN
+      delay(30000);                       // MOTOR COOLDOWN
   }
  
  
@@ -324,7 +366,7 @@ void loop() {
     motor_driver.PositionRefSet(0);
     MoveDistance(10000000, motor_driver);
     delay(6000);
-    CommandVelocity(ang_velocity_cover, motor_rope_tube);
+    CommandVelocity(ang_velocity_rope, motor_rope_tube);
  
     while (uncover_jog_button.State() == HIGH) {
       continue;                                               // Keeps Loop Going Until uncover_jog_button.State() == LOW
@@ -485,4 +527,9 @@ bool CommandVelocity(long commandedVelocity, MotorDriver & motor) {
     motor.MotorInBDuty(dutyRequest);
  
     return true;
+}
+
+void ClearScreen() {
+    SerialPort.SendChar(0xfe);
+    SerialPort.SendChar(0x51); 
 }
