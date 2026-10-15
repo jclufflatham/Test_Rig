@@ -26,7 +26,7 @@ bool lastInput2 = false;
 bool estopActive = false;
  
 unsigned long loop_start_time = 0;
-const unsigned long loop_timeout = 60000;      // 60 Secoonds (CHANGE IF COVER DISTANCE IS CHANGED)
+const unsigned long loop_timeout = 70000;      // 70 Secoonds (CHANGE IF COVER DISTANCE IS CHANGED)
 bool timed_out = false;
  
 int32_t uncoverPulses;
@@ -57,7 +57,7 @@ float cycles = 0;
  
 // Declares our user-defined helper functions on the bottom.
 bool MoveDistance(int distance, MotorDriver& motor);
-bool CommandVelocity(long commandedVelocity);
+bool CommandVelocity(long commandedVelocity, MotorDriver & motor);
 void ClearScreen();
  
 bool driver_stopped = true;
@@ -162,7 +162,7 @@ void loop() {
       motor_driver.PositionRefSet(0);
       MoveDistance(10000000, motor_driver);                     // Start Driver Motor
  
-      delay(6000);
+      delay(8000);                                              // Engagment Delay
  
       CommandVelocity(0, motor_cover_tube);                     // Start Cover and Rope Tube Motors
       CommandVelocity(ang_velocity_rope, motor_rope_tube);
@@ -213,12 +213,6 @@ void loop() {
           motor_driver.MoveStopDecel(10000);
           motor_driver.EnableRequest(false);
           motor_cover_tube.EnableRequest(false);
-          cycles += .5;
-          Serial.print("Number of Cycles Completed: ");
-          Serial.println(cycles, 1);
-          ClearScreen();
-          SerialPort.Send("    AUTO CYCLE ON      NUMBER OF CYCLES:                             ");
-          SerialPort.Send(cycles, 1);
         }
  
         if (rope_rotary_switch_1.State() == LOW){
@@ -240,6 +234,12 @@ void loop() {
       motor_driver.EnableRequest(false);
       motor_cover_tube.EnableRequest(false);
       motor_rope_tube.EnableRequest(false);
+      cycles += .5;
+      Serial.print("Number of Cycles Completed: ");
+      Serial.println(cycles, 1);
+      ClearScreen();
+      SerialPort.Send("    AUTO CYCLE ON      NUMBER OF CYCLES:                             ");
+      SerialPort.Send(cycles, 1);
  
       delay(30000);                                             // MOTOR COOLDOWN
  
@@ -259,7 +259,7 @@ void loop() {
       motor_driver.PositionRefSet(0);
       MoveDistance(-10000000, motor_driver);                    // Start Driver Motor
  
-      delay(6000);
+      delay(8000);                                              // Engagement Delay
  
       CommandVelocity(-ang_velocity_cover, motor_cover_tube);   // Start Rope and Cover Motors
       CommandVelocity(0, motor_rope_tube);
@@ -317,12 +317,6 @@ void loop() {
           CommandVelocity(0, motor_rope_tube);
           motor_driver.EnableRequest(false);
           motor_rope_tube.EnableRequest(false);
-          cycles += .5;
-          Serial.print("Number of Cycles Completed: ");
-          Serial.println(cycles, 1);
-          ClearScreen();
-          SerialPort.Send("    AUTO CYCLE ON      NUMBER OF CYCLES:                             ");
-          SerialPort.Send(cycles, 1);
         }
      
       }
@@ -337,6 +331,13 @@ void loop() {
       motor_driver.EnableRequest(false);
       motor_cover_tube.EnableRequest(false);
       motor_rope_tube.EnableRequest(false);
+
+      cycles += .5;
+      Serial.print("Number of Cycles Completed: ");
+      Serial.println(cycles, 1);
+      ClearScreen();
+      SerialPort.Send("    AUTO CYCLE ON      NUMBER OF CYCLES:                             ");
+      SerialPort.Send(cycles, 1);
  
       green_light.State(false);
  
@@ -513,6 +514,7 @@ bool CommandVelocity(long commandedVelocity, MotorDriver & motor) {
     else {
         motor.MotorInAState(true);
     }
+ 
     // Delays to send the correct filtered direction.
     delay(2 + INPUT_A_FILTER);
  
